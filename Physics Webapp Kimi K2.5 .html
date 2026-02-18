@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physics 3D Visual Learning</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap');
+        
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            overflow: hidden;
+            background: #0a0a0f;
+        }
+        
+        .glass-panel {
+            background: rgba(20, 20, 30, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        
+        .neon-glow {
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.5), 0 0 40px rgba(99, 102, 241, 0.3);
+        }
+        
+        .simulation-btn {
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .simulation-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .simulation-btn:hover::before {
+            left: 100%;
+        }
+        
+        .simulation-btn.active {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border-color: transparent;
+        }
+        
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+        
+        .control-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+            height: 6px;
+            outline: none;
+        }
+        
+        .control-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #6366f1;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.8);
+        }
+        
+        .particle-trail {
+            position: absolute;
+            pointer-events: none;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .floating {
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        .stats-card {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+    </style>
+</head>
+<body class="text-white">
+
+    <!-- 3D Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay -->
+    <div class="relative z-10 h-screen flex flex-col pointer-events-none">
+        
+        <!-- Header -->
+        <header class="p-6 flex justify-between items-center pointer-events-auto">
+            <div class="glass-panel rounded-2xl px-6 py-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center neon-glow">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">Physics 3D</h1>
+                    <p class="text-xs text-gray-400 tracking-wider">INTERACTIVE VISUAL LEARNING</p>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-full px-6 py-3 flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                    <span class="text-sm text-gray-300">Live Simulation</span>
+                </div>
+                <div class="h-4 w-px bg-gray-600"></div>
+                <span class="text-sm font-mono text-indigo-400" id="fps-counter">60 FPS</span>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 flex justify-between p-6">
+            
+            <!-- Left Sidebar - Simulation Selector -->
+            <div class="glass-panel rounded-2xl p-6 w-80 pointer-events-auto flex flex-col gap-4 max-h-[80vh] overflow-y-auto">
+                <h2 class="text-lg font-semibold mb-2 text-indigo-300">Simulations</h2>
+                
+                <button onclick="loadSimulation('pendulum')" class="simulation-btn active w-full text-left p-4 rounded-xl border border-gray-700 hover:border-indigo-500 bg-gray-800/50 group" data-sim="pendulum">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-sm">Double Pendulum</h3>
+                            <p class="text-xs text-gray-400">Chaos theory & motion</p>
+                        </div>
+                    </div>
+                </button>
+
+                <button onclick="loadSimulation('gravity')" class="simulation-btn w-full text-left p-4 rounded-xl border border-gray-700 hover:border-indigo-500 bg-gray-800/50 group" data-sim="gravity">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-sm">N-Body Gravity</h3>
+                            <p class="text-xs text-gray-400">Orbital mechanics</p>
+                        </div>
+                    </div>
+                </button>
+
+                <button onclick="loadSimulation('wave')" class="simulation-btn w-full text-left p-4 rounded-xl border border-gray-700 hover:border-indigo-500 bg-gray-800/50 group" data-sim="wave">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-sm">Wave Interference</h3>
+                            <p class="text-xs text-gray-400">Superposition patterns</p>
+                        </div>
+                    </div>
+                </button>
+
+                <button onclick="loadSimulation('collision')" class="simulation-btn w-full text-left p-4 rounded-xl border border-gray-700 hover:border-indigo-500 bg-gray-800/50 group" data-sim="collision">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-pink-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg class="w-5 h-5 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-sm">Elastic Collisions</h3>
+                            <p class="text-xs text-gray-400">Momentum conservation</p>
+                        </div>
+                    </div>
+                </button>
+
+                <button onclick="loadSimulation('electric')" class="simulation-btn w-full text-left p-4 rounded-xl border border-gray-700 hover:border-indigo-500 bg-gray-800/50 group" data-sim="electric">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-yellow-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg class="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-sm">Electric Fields</h3>
+                            <p class="text-xs text-gray-400">Coulomb forces</p>
+                        </div>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Right Sidebar - Controls & Stats -->
+            <div class="flex flex-col gap-4 w-80 pointer-events-auto">
+                
+                <!-- Live Stats -->
+                <div class="glass-panel rounded-2xl p-6 stats-card">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        Live Metrics
+                    </h3>
+                    <div id="stats-content" class="space-y-3 font-mono text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Energy:</span>
+                            <span class="text-indigo-400" id="stat-energy">0.00 J</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Velocity:</span>
+                            <span class="text-purple-400" id="stat-velocity">0.00 m/s</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Acceleration:</span>
+                            <span class="text-pink-400" id="stat-accel">0.00 m/s²</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Controls -->
+                <div class="glass-panel rounded-2xl p-6">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Parameters</h3>
+                    <div id="controls-content" class="space-y-6">
+                        <!-- Dynamic controls inserted here -->
+                    </div>
+                    
+                    <div class="mt-6 pt-6 border-t border-gray-700 flex gap-3">
+                        <button onclick="resetSimulation()" class="flex-1 py-2 px-4 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors text-sm font-medium">
+                            Reset
+                        </button>
+                        <button onclick="togglePause()" id="pause-btn" class="flex-1 py-2 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 transition-colors text-sm font-medium neon-glow">
+                            Pause
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Info Card -->
+                <div class="glass-panel rounded-2xl p-6 floating">
+                    <h3 class="text-lg font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400" id="info-title">Double Pendulum</h3>
+                    <p class="text-sm text-gray-400 leading-relaxed" id="info-desc">
+                        A chaotic system demonstrating sensitive dependence on initial conditions. The motion is deterministic yet unpredictable over time.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Three.js Setup
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0a0a0f, 0.02);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+        
+        const pointLight = new THREE.PointLight(0x6366f1, 2, 100);
+        pointLight.position.set(10, 10, 10);
+        scene.add(pointLight);
+        
+        const pointLight2 = new THREE.PointLight(0x8b5cf6, 2, 100);
+        pointLight2.position.set(-10, -10, -10);
+        scene.add(pointLight2);
+
+        // Grid
+        const gridHelper = new THREE.GridHelper(50, 50, 0x6366f1, 0x1a1a2e);
+        scene.add(gridHelper);
+
+        // Global variables
+        let currentSimulation = null;
+        let isPaused = false;
+        let animationId = null;
+        let simulationObjects = [];
+        let trails = [];
+
+        // Simulation Classes
+        class PendulumSimulation {
+            constructor() {
+                this.length1 = 10;
+                this.length2 = 10;
+                this.mass1 = 2;
+                this.mass2 = 2;
+                this.angle1 = Math.PI / 2;
+                this.angle2 = Math.PI / 2;
+                this.velocity1 = 0;
+                this.velocity2 = 0;
+                this.accel1 = 0;
+                this.accel2 = 0;
+                this.gravity = 0.5;
+                this.trailPositions = [];
+                
+                this.init();
+            }
+
+            init() {
+                // Rod 1
+                const rod1Geo = new THREE.CylinderGeometry(0.1, 0.1, this.length1, 8);
+                rod1Geo.translate(0, -this.length1/2, 0);
+                const rod1Mat = new THREE.MeshPhongMaterial({ color: 0x6366f1, emissive: 0x6366f1, emissiveIntensity: 0.2 });
+                this.rod1 = new THREE.Mesh(rod1Geo, rod1Mat);
+                
+                // Mass 1
+                const mass1Geo = new THREE.SphereGeometry(this.mass1, 32, 32);
+                const mass1Mat = new THREE.MeshPhongMaterial({ color: 0x8b5cf6, emissive: 0x8b5cf6, emissiveIntensity: 0.5 });
+                this.mass1Mesh = new THREE.Mesh(mass1Geo, mass1Mat);
+                
+                // Rod 2
+                const rod2Geo = new THREE.CylinderGeometry(0.1, 0.1, this.length2, 8);
+                rod2Geo.translate(0, -this.length2/2, 0);
+                const rod2Mat = new THREE.MeshPhongMaterial({ color: 0x6366f1, emissive: 0x6366f1, emissiveIntensity: 0.2 });
+                this.rod2 = new THREE.Mesh(rod2Geo, rod2Mat);
+                
+                // Mass 2
+                const mass2Geo = new THREE.SphereGeometry(this.mass2, 32, 32);
+                const mass2Mat = new THREE.MeshPhongMaterial({ color: 0xec4899, emissive: 0xec4899, emissiveIntensity: 0.5 });
+                this.mass2Mesh = new THREE.Mesh(mass2Geo, mass2Mat);
+                
+                // Pivot
+                const pivotGeo = new THREE.SphereGeometry(0.5, 16, 16);
+                const pivotMat = new THREE.MeshPhongMaterial({ color: 0xffffff });
+                this.pivot = new THREE.Mesh(pivotGeo, pivotMat);
+                
+                scene.add(this.rod1);
+                scene.add(this.mass1Mesh);
+                scene.add(this.rod2);
+                scene.add(this.mass2Mesh);
+                scene.add(this.pivot);
+                
+                // Trail setup
+                this.trailGeometry = new THREE.BufferGeometry();
+                this.trailMaterial = new THREE.LineBasicMaterial({ 
+                    color: 0xec4899, 
+                    transparent: true, 
+                    opacity: 0.6 
+                });
+                this.trailLine = new THREE.Line(this.trailGeometry, this.trailMaterial);
+                scene.add(this.trailLine);
+                
+                simulationObjects.push(this.rod1, this.mass1Mesh, this.rod2, this.mass2Mesh, this.pivot, this.trailLine);
+            }
+
+            update() {
+                // Physics calculations (simplified double pendulum)
+                const num1 = -this.gravity * (2 * this.mass1 + this.mass2) * Math.sin(this.angle1);
+                const num2 = -this.mass2 * this.gravity * Math.sin(this.angle1 - 2 * this.angle2);
+                const num3 = -2 * Math.sin(this.angle1 - this.angle2) * this.mass2;
+                const num4 = this.velocity2 * this.velocity2 * this.length2 + this.velocity1 * this.velocity1 * this.length1 * Math.cos(this.angle1 - this.angle2);
+                const den = this.length1 * (2 * this.mass1 + this.mass2 - this.mass2 * Math.cos(2 * this.angle1 - 2 * this.angle2));
+                
+                this.accel1 = (num1 + num2 + num3 * num4) / den;
+                
+                const num5 = 2 * Math.sin(this.angle1 - this.angle2);
+                const num6 = (this.velocity1 * this.velocity1 * this.length1 * (this.mass1 + this.mass2));
+                const num7 = this.gravity * (this.mass1 + this.mass2) * Math.cos(this.angle1);
+                const num8 = this.velocity2 * this.velocity2 * this.length2 * this.mass2 * Math.cos(this.angle1 - this.angle2);
+                const den2 = this.length2 * (2 * this.mass1 + this.mass2 - this.mass2 * Math.cos(2 * this.angle1 - 2 * this.angle2));
+                
+                this.accel2 = (num5 * (num6 + num7 + num8)) / den2;
+                
+                this.velocity1 += this.accel1 * 0.1;
+                this.velocity2 += this.accel2 * 0.1;
+                this.angle1 += this.velocity1 * 0.1;
+                this.angle2 += this.velocity2 * 0.1;
+                
+                // Update positions
+                const x1 = this.length1 * Math.sin(this.angle1);
+                const y1 = -this.length1 * Math.cos(this.angle1);
+                const x2 = x1 + this.length2 * Math.sin(this.angle2);
+                const y2 = y1 - this.length2 * Math.cos(this.angle2);
+                
+                this.rod1.position.set(0, 0, 0);
+                this.rod1.rotation.z = this.angle1;
+                this.mass1Mesh.position.set(x1, y1, 0);
+                
+                this.rod2.position.set(x1, y1, 0);
+                this.rod2.rotation.z = this.angle2;
+                this.mass2Mesh.position.set(x2, y2, 0);
+                
+                // Update trail
+                this.trailPositions.push(new THREE.Vector3(x2, y2, 0));
+                if (this.trailPositions.length > 200) this.trailPositions.shift();
+                
+                this.trailGeometry.setFromPoints(this.trailPositions);
+                
+                // Update stats
+                const energy = 0.5 * this.mass1 * this.velocity1 * this.velocity1 * this.length1 * this.length1 + 
+                              0.5 * this.mass2 * (this.velocity1 * this.velocity1 * this.length1 * this.length1 + 
+                              this.velocity2 * this.velocity2 * this.length2 * this.length2 + 
+                              2 * this.velocity1 * this.length1 * this.velocity2 * this.length2 * Math.cos(this.angle1 - this.angle2));
+                const velocity = Math.sqrt(this.velocity1 * this.velocity1 + this.velocity2 * this.velocity2);
+                
+                document.getElementById('stat-energy').textContent = energy.toFixed(2) + ' J';
+                document.getElementById('stat-velocity').textContent = velocity.toFixed(2) + ' rad/s';
+                document.getElementById('stat-accel').textContent = Math.sqrt(this.accel1*this.accel1 + this.accel2*this.accel2).toFixed(2) + ' rad/s²';
+            }
+
+            reset() {
+                this.angle1 = Math.PI / 2;
+                this.angle2 = Math.PI / 2;
+                this.velocity1 = 0;
+                this.velocity2 = 0;
+                this.trailPositions = [];
+            }
+        }
+
+        class GravitySimulation {
+            constructor() {
+                this.bodies = [];
+                this.G = 0.5;
+                this.init();
+            }
+
+            init() {
+                // Create central star
+                const starGeo = new THREE.SphereGeometry(2, 32, 32);
+                const starMat = new THREE.MeshPhongMaterial({ 
+                    color: 0xfcd34d, 
+                    emissive: 0xf59e0b, 
+                    emissiveIntensity: 0.8 
+                });
+                this.star = new THREE.Mesh(starGeo, starMat);
+                this.star.position.set(0, 0, 0);
+                this.star.mass = 1000;
+                this.star.velocity = new THREE.Vector3(0, 0, 0);
+                scene.add(this.star);
+                this.bodies.push(this.star);
+                
+                // Create planets
+                const colors = [0x6366f1, 0x8b5cf6, 0xec4899, 0x3b82f6];
+                for (let i = 0; i < 4; i++) {
+                    const distance = 8 + i * 5;
+                    const planetGeo = new THREE.SphereGeometry(0.5 + Math.random() * 0.5, 32, 32);
+                    const planetMat = new THREE.MeshPhongMaterial({ 
+                        color: colors[i],
+                        emissive: colors[i],
+                        emissiveIntensity: 0.3
+                    });
+                    const planet = new THREE.Mesh(planetGeo, planetMat);
+                    
+                    const angle = (Math.PI * 2 * i) / 4;
+                    planet.position.set(Math.cos(angle) * distance, Math.sin(angle) * distance, 0);
+                    planet.mass = 10;
+                    planet.velocity = new THREE.Vector3(
+                        -Math.sin(angle) * Math.sqrt(this.G * this.star.mass / distance),
+                        Math.cos(angle) * Math.sqrt(this.G * this.star.mass / distance),
+                        0
+                    );
+                    
+                    // Trail
+                    planet.trail = [];
+                    const trailGeo = new THREE.BufferGeometry();
+                    const trailMat = new THREE.LineBasicMaterial({ color: colors[i], transparent: true, opacity: 0.3 });
+                    planet.trailLine = new THREE.Line(trailGeo, trailMat);
+                    scene.add(planet.trailLine);
+                    
+                    scene.add(planet);
+                    this.bodies.push(planet);
+                }
+                
+                simulationObjects.push(this.star, ...this.bodies.map(b => b.trailLine).filter(Boolean));
+            }
+
+            update() {
+                // Calculate gravitational forces
+                for (let i = 0; i < this.bodies.length; i++) {
+                    for (let j = i + 1; j < this.bodies.length; j++) {
+                        const body1 = this.bodies[i];
+                        const body2 = this.bodies[j];
+                        
+                        const direction = new THREE.Vector3().subVectors(body2.position, body1.position);
+                        const distance = direction.length();
+                        const force = (this.G * body1.mass * body2.mass) / (distance * distance);
+                        
+                        direction.normalize();
+                        const forceVector = direction.multiplyScalar(force);
+                        
+                        if (body1 !== this.star) {
+                            body1.velocity.add(forceVector.clone().multiplyScalar(0.01 / body1.mass));
+                        }
+                        if (body2 !== this.star) {
+                            body2.velocity.sub(forceVector.clone().multiplyScalar(0.01 / body2.mass));
+                        }
+                    }
+                }
+                
+                // Update positions and trails
+                this.bodies.forEach(body => {
+                    if (body !== this.star) {
+                        body.position.add(body.velocity.clone().multiplyScalar(0.1));
+                        
+                        // Update trail
+                        body.trail.push(body.position.clone());
+                        if (body.trail.length > 100) body.trail.shift();
+                        body.trailLine.geometry.setFromPoints(body.trail);
+                    }
+                });
+                
+                // Stats
+                const planet = this.bodies[1];
+                const speed = planet.velocity.length();
+                const distance = planet.position.distanceTo(this.star.position);
+                const energy = 0.5 * planet.mass * speed * speed - (this.G * this.star.mass * planet.mass) / distance;
+                
+                document.getElementById('stat-energy').textContent = energy.toFixed(2) + ' J';
+                document.getElementById('stat-velocity').textContent = speed.toFixed(2) + ' m/s';
+                document.getElementById('stat-accel').textContent = (this.G * this.star.mass / (distance * distance)).toFixed(2) + ' m/s²';
+            }
+
+            reset() {
+                this.bodies.forEach(body => {
+                    if (body !== this.star) {
+                        scene.remove(body);
+                        scene.remove(body.trailLine);
+                    }
+                });
+                scene.remove(this.star);
+                this.bodies = [];
+                this.init();
+            }
+        }
+
+        class WaveSimulation {
+            constructor() {
+                this.time = 0;
+                this.amplitude = 2;
+                this.frequency = 0.5;
+                this.speed = 2;
+                this.init();
+            }
+
+            init() {
+                // Create wave grid
+                const geometry = new THREE.PlaneGeometry(40, 40, 64, 64);
+                const material = new THREE.MeshPhongMaterial({ 
+                    color: 0x6366f1,
+                    emissive: 0x4f46e5,
+                    emissiveIntensity: 0.2,
+                    wireframe: true,
+                    side: THREE.DoubleSide
+                });
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.rotation.x = -Math.PI / 2;
+                scene.add(this.mesh);
+                
+                // Second wave (interference)
+                const geometry2 = new THREE.PlaneGeometry(40, 40, 64, 64);
+                const material2 = new THREE.MeshPhongMaterial({ 
+                    color: 0xec4899,
+                    emissive: 0xdb2777,
+                    emissiveIntensity: 0.2,
+                    wireframe: true,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.5
+                });
+                this.mesh2 = new THREE.Mesh(geometry2, material2);
+                this.mesh2.rotation.x = -Math.PI / 2;
+                this.mesh2.position.y = 0.1;
+                scene.add(this.mesh2);
+                
+                simulationObjects.push(this.mesh, this.mesh2);
+            }
+
+            update() {
+                this.time += 0.05;
+                
+                const positions = this.mesh.geometry.attributes.position;
+                const positions2 = this.mesh2.geometry.attributes.position;
+                
+                for (let i = 0; i < positions.count; i++) {
+                    const x = positions.getX(i);
+                    const y = positions.getY(i);
+                    
+                    // Wave 1
+                    const z1 = this.amplitude * Math.sin(this.frequency * Math.sqrt(x*x + y*y) - this.speed * this.time);
+                    positions.setZ(i, z1);
+                    
+                    // Wave 2 (offset source)
+                    const z2 = this.amplitude * Math.sin(this.frequency * Math.sqrt((x-5)*(x-5) + y*y) - this.speed * this.time);
+                    positions2.setZ(i, z2);
+                }
+                
+                positions.needsUpdate = true;
+                positions2.needsUpdate = true;
+                
+                document.getElementById('stat-energy').textContent = (this.amplitude * this.frequency).toFixed(2) + ' J';
+                document.getElementById('stat-velocity').textContent = this.speed.toFixed(2) + ' m/s';
+                document.getElementById('stat-accel').textContent = (this.amplitude * this.frequency * this.frequency).toFixed(2) + ' m/s²';
+            }
+
+            reset() {
+                this.time = 0;
+            }
+        }
+
+        class CollisionSimulation {
+            constructor() {
+                this.particles = [];
+                this.init();
+            }
+
+            init() {
+                const colors = [0x6366f1, 0x8b5cf6, 0xec4899, 0x3b82f6, 0x10b981, 0xf59e0b];
+                
+                for (let i = 0; i < 8; i++) {
+                    const geometry = new THREE.SphereGeometry(1, 32, 32);
+                    const material = new THREE.MeshPhongMaterial({ 
+                        color: colors[i % colors.length],
+                        emissive: colors[i % colors.length],
+                        emissiveIntensity: 0.4
+                    });
+                    const particle = new THREE.Mesh(geometry, material);
+                    
+                    particle.position.set(
+                        (Math.random() - 0.5) * 20,
+                        (Math.random() - 0.5) * 20,
+                        (Math.random() - 0.5) * 10
+                    );
+                    
+                    particle.velocity = new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.5,
+                        (Math.random() - 0.5) * 0.5,
+                        (Math.random() - 0.5) * 0.2
+                    );
+                    
+                    particle.mass = 1;
+                    this.particles.push(particle);
+                    scene.add(particle);
+                }
+                
+                simulationObjects.push(...this.particles);
+            }
+
+            update() {
+                // Update positions
+                this.particles.forEach(p => {
+                    p.position.add(p.velocity);
+                    
+                    // Boundary bounce
+                    ['x', 'y', 'z'].forEach(axis => {
+                        if (Math.abs(p.position[axis]) > 15) {
+                            p.velocity[axis] *= -0.9;
+                            p.position[axis] = Math.sign(p.position[axis]) * 15;
+                        }
+                    });
+                });
+                
+                // Check collisions
+                for (let i = 0; i < this.particles.length; i++) {
+                    for (let j = i + 1; j < this.particles.length; j++) {
+                        const p1 = this.particles[i];
+                        const p2 = this.particles[j];
+                        
+                        const dist = p1.position.distanceTo(p2.position);
+                        if (dist < 2) {
+                            // Elastic collision
+                            const normal = new THREE.Vector3().subVectors(p2.position, p1.position).normalize();
+                            
+                            const relativeVelocity = new THREE.Vector3().subVectors(p1.velocity, p2.velocity);
+                            const speed = relativeVelocity.dot(normal);
+                            
+                            if (speed > 0) continue;
+                            
+                            const impulse = 2 * speed / (p1.mass + p2.mass);
+                            p1.velocity.sub(normal.clone().multiplyScalar(impulse * p2.mass));
+                            p2.velocity.add(normal.clone().multiplyScalar(impulse * p1.mass));
+                            
+                            // Separate particles
+                            const overlap = 2 - dist;
+                            p1.position.sub(normal.clone().multiplyScalar(overlap * 0.5));
+                            p2.position.add(normal.clone().multiplyScalar(overlap * 0.5));
+                        }
+                    }
+                }
+                
+                // Stats
+                const totalKE = this.particles.reduce((sum, p) => sum + 0.5 * p.mass * p.velocity.lengthSq(), 0);
+                const avgSpeed = this.particles.reduce((sum, p) => sum + p.velocity.length(), 0) / this.particles.length;
+                
+                document.getElementById('stat-energy').textContent = totalKE.toFixed(2) + ' J';
+                document.getElementById('stat-velocity').textContent = avgSpeed.toFixed(2) + ' m/s';
+                document.getElementById('stat-accel').textContent = '0.00 m/s²';
+            }
+
+            reset() {
+                this.particles.forEach(p => {
+                    p.position.set(
+                        (Math.random() - 0.5) * 20,
+                        (Math.random() - 0.5) * 20,
+                        (Math.random() - 0.5) * 10
+                    );
+                    p.velocity.set(
+                        (Math.random() - 0.5) * 0.5,
+                        (Math.random() - 0.5) * 0.5,
+                        (Math.random() - 0.5) * 0.2
+                    );
+                });
+            }
+        }
+
+        class ElectricSimulation {
+            constructor() {
+                this.charges = [];
+                this.fieldLines = [];
+                this.init();
+            }
+
+            init() {
+                // Positive charges
+                const posGeo = new THREE.SphereGeometry(1, 32, 32);
+                const posMat = new THREE.MeshPhongMaterial({ color: 0xef4444, emissive: 0xdc2626, emissiveIntensity: 0.6 });
+                
+                const charge1 = new THREE.Mesh(posGeo, posMat);
+                charge1.position.set(-5, 0, 0);
+                charge1.charge = 5;
+                scene.add(charge1);
+                this.charges.push(charge1);
+                
+                // Negative charge
+                const negGeo = new THREE.SphereGeometry(1, 32, 32);
+                const negMat = new THREE.MeshPhongMaterial({ color: 0x3b82f6, emissive: 0x2563eb, emissiveIntensity: 0.6 });
+                
+                const charge2 = new THREE.Mesh(negGeo, negMat);
+                charge2.position.set(5, 0, 0);
+                charge2.charge = -5;
+                scene.add(charge2);
+                this.charges.push(charge2);
+                
+                // Test particle
+                const testGeo = new THREE.SphereGeometry(0.5, 32, 32);
+                const testMat = new THREE.MeshPhongMaterial({ color: 0x10b981, emissive: 0x059669, emissiveIntensity: 0.8 });
+                this.testParticle = new THREE.Mesh(testGeo, testMat);
+                this.testParticle.position.set(0, 8, 0);
+                this.testParticle.velocity = new THREE.Vector3(0, 0, 0);
+                scene.add(this.testParticle);
+                
+                // Field lines visualization
+                this.createFieldLines();
+                
+                simulationObjects.push(charge1, charge2, this.testParticle, ...this.fieldLines);
+            }
+
+            createFieldLines() {
+                // Remove old lines
+                this.fieldLines.forEach(line => scene.remove(line));
+                this.fieldLines = [];
+                
+                const points = [];
+                for (let i = 0; i < 20; i++) {
+                    const angle = (i / 20) * Math.PI * 2;
+                    const start = new THREE.Vector3(
+                        this.charges[0].position.x + Math.cos(angle) * 1.1,
+                        Math.sin(angle) * 1.1,
+                        0
+                    );
+                    
+                    const linePoints = [start];
+                    let current = start.clone();
+                    
+                    for (let step = 0; step < 50; step++) {
+                        const force = new THREE.Vector3(0, 0, 0);
+                        
+                        this.charges.forEach(charge => {
+                            const dir = new THREE.Vector3().subVectors(charge.position, current);
+                            const dist = dir.length();
+                            dir.normalize();
+                            const f = (charge.charge) / (dist * dist);
+                            force.add(dir.multiplyScalar(f));
+                        });
+                        
+                        force.normalize().multiplyScalar(0.5);
+                        current.add(force);
+                        linePoints.push(current.clone());
+                        
+                        if (current.distanceTo(this.charges[1].position) < 1.2) break;
+                    }
+                    
+                    const geometry = new THREE.BufferGeometry().setFromPoints(linePoints);
+                    const material = new THREE.LineBasicMaterial({ 
+                        color: 0xfcd34d, 
+                        transparent: true, 
+                        opacity: 0.4 
+                    });
+                    const line = new THREE.Line(geometry, material);
+                    this.fieldLines.push(line);
+                    scene.add(line);
+                }
+            }
+
+            update() {
+                // Calculate force on test particle
+                const force = new THREE.Vector3(0, 0, 0);
+                this.charges.forEach(charge => {
+                    const dir = new THREE.Vector3().subVectors(charge.position, this.testParticle.position);
+                    const dist = dir.length();
+                    dir.normalize();
+                    const f = (charge.charge * 2) / (dist * dist); // q = 2 for test particle
+                    force.add(dir.multiplyScalar(f * 0.1));
+                });
+                
+                this.testParticle.velocity.add(force);
+                this.testParticle.velocity.multiplyScalar(0.98); // Damping
+                this.testParticle.position.add(this.testParticle.velocity);
+                
+                // Reset if too far
+                if (this.testParticle.position.length() > 20) {
+                    this.testParticle.position.set(0, 8, 0);
+                    this.testParticle.velocity.set(0, 0, 0);
+                }
+                
+                // Rotate charges slowly
+                const time = Date.now() * 0.001;
+                this.charges[0].position.x = Math.cos(time) * 5;
+                this.charges[0].position.z = Math.sin(time) * 5;
+                this.charges[1].position.x = -Math.cos(time) * 5;
+                this.charges[1].position.z = -Math.sin(time) * 5;
+                
+                this.createFieldLines();
+                
+                const speed = this.testParticle.velocity.length();
+                const potential = this.charges.reduce((sum, c) => sum + c.charge / this.testParticle.position.distanceTo(c.position), 0);
+                
+                document.getElementById('stat-energy').textContent = (0.5 * speed * speed).toFixed(2) + ' J';
+                document.getElementById('stat-velocity').textContent = speed.toFixed(2) + ' m/s';
+                document.getElementById('stat-accel').textContent = force.length().toFixed(2) + ' m/s²';
+            }
+
+            reset() {
+                this.testParticle.position.set(0, 8, 0);
+                this.testParticle.velocity.set(0, 0, 0);
+            }
+        }
+
+        // UI Functions
+        function loadSimulation(type) {
+            // Clear previous
+            simulationObjects.forEach(obj => scene.remove(obj));
+            simulationObjects = [];
+            
+            // Update buttons
+            document.querySelectorAll('.simulation-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.sim === type) btn.classList.add('active');
+            });
+            
+            // Update info
+            const info = {
+                pendulum: {
+                    title: 'Double Pendulum',
+                    desc: 'A chaotic system demonstrating sensitive dependence on initial conditions. The motion is deterministic yet unpredictable over time.'
+                },
+                gravity: {
+                    title: 'N-Body Gravity',
+                    desc: 'Simulates orbital mechanics using Newton\'s law of universal gravitation. Watch how bodies attract and orbit around each other.'
+                },
+                wave: {
+                    title: 'Wave Interference',
+                    desc: 'Visualizes the superposition of two wave sources. Notice the constructive and destructive interference patterns.'
+                },
+                collision: {
+                    title: 'Elastic Collisions',
+                    desc: 'Demonstrates conservation of momentum and kinetic energy in particle collisions. Perfectly elastic bounces with no energy loss.'
+                },
+                electric: {
+                    title: 'Electric Fields',
+                    desc: 'Visualizes Coulomb forces and electric field lines between positive and negative charges. Watch the test particle follow the field.'
+                }
+            };
+            
+            document.getElementById('info-title').textContent = info[type].title;
+            document.getElementById('info-desc').textContent = info[type].desc;
+            
+            // Create controls
+            const controlsDiv = document.getElementById('controls-content');
+            controlsDiv.innerHTML = '';
+            
+            if (type === 'pendulum') {
+                controlsDiv.innerHTML = `
+                    <div>
+                        <label class="text-xs text-gray-400 block mb-2">Gravity</label>
+                        <input type="range" min="0.1" max="2" step="0.1" value="0.5" class="control-slider w-full" oninput="currentSimulation.gravity = parseFloat(this.value)">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-400 block mb-2">Mass 1</label>
+                        <input type="range" min="1" max="5" step="0.5" value="2" class="control-slider w-full" oninput="currentSimulation.mass1 = parseFloat(this.value); currentSimulation.mass1Mesh.geometry = new THREE.SphereGeometry(this.value, 32, 32)">
+                    </div>
+                `;
+            } else if (type === 'gravity') {
+                controlsDiv.innerHTML = `
+                    <div>
+                        <label class="text-xs text-gray-400 block mb-2">G Constant</label>
+                        <input type="range" min="0.1" max="2" step="0.1" value="0.5" class="control-slider w-full" oninput="currentSimulation.G = parseFloat(this.value)">
+                    </div>
+                `;
+            } else if (type === 'wave') {
+                controlsDiv.innerHTML = `
+                    <div>
+                        <label class="text-xs text-gray-400 block mb-2">Amplitude</label>
+                        <input type="range" min="0.5" max="5" step="0.5" value="2" class="control-slider w-full" oninput="currentSimulation.amplitude = parseFloat(this.value)">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-400 block mb-2">Frequency</label>
+                        <input type="range" min="0.1" max="2" step="0.1" value="0.5" class="control-slider w-full" oninput="currentSimulation.frequency = parseFloat(this.value)">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-400 block mb-2">Speed</label>
+                        <input type="range" min="0.5" max="5" step="0.5" value="2" class="control-slider w-full" oninput="currentSimulation.speed = parseFloat(this.value)">
+                    </div>
+                `;
+            }
+            
+            // Initialize simulation
+            switch(type) {
+                case 'pendulum':
+                    currentSimulation = new PendulumSimulation();
+                    camera.position.set(0, 0, 30);
+                    break;
+                case 'gravity':
+                    currentSimulation = new GravitySimulation();
+                    camera.position.set(0, 20, 40);
+                    break;
+                case 'wave':
+                    currentSimulation = new WaveSimulation();
+                    camera.position.set(20, 20, 20);
+                    break;
+                case 'collision':
+                    currentSimulation = new CollisionSimulation();
+                    camera.position.set(0, 0, 40);
+                    break;
+                case 'electric':
+                    currentSimulation = new ElectricSimulation();
+                    camera.position.set(0, 15, 25);
+                    break;
+            }
+            
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        function resetSimulation() {
+            if (currentSimulation) currentSimulation.reset();
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            document.getElementById('pause-btn').textContent = isPaused ? 'Resume' : 'Pause';
+        }
+
+        // Animation Loop
+        let lastTime = 0;
+        function animate(time) {
+            requestAnimationFrame(animate);
+            
+            const delta = time - lastTime;
+            lastTime = time;
+            
+            if (!isPaused && currentSimulation) {
+                currentSimulation.update();
+            }
+            
+            controls.update();
+            renderer.render(scene, camera);
+            
+            // Update FPS
+            if (time % 1000 < 20) {
+                document.getElementById('fps-counter').textContent = Math.round(1000 / (delta || 16)) + ' FPS';
+            }
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Initialize
+        loadSimulation('pendulum');
+        animate(0);
+    </script>
+</body>
+</html>
